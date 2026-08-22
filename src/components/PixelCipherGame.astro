@@ -1,0 +1,458 @@
+---
+let baseImage: HTMLCanvasElement | HTMLImageElement | null = null;
+let hiddenSequence: Array<{ mode: 'horizontal' | 'vertical'; pattern: 'reverse'; dist: number }> = [];
+let playerMoveStack: Array<{ mode: 'horizontal' | 'vertical'; pattern: 'reverse'; dist: number }> = [];
+let initialScrambledData: ImageData | null = null;
+let progress: number = 0;
+let showWinBanner: boolean = false;
+const canvasSize = { width: 400, height: 300 };
+---
+
+<style>
+  * { box-sizing: border-box; }
+  :host {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .game-panel {
+    background: #1e293b;
+    padding: 20px;
+    border-radius: 16px;
+    width: 100%;
+    max-width: 1100px;
+    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+    background: #0f172a;
+    padding: 16px;
+    border-radius: 12px;
+  }
+  .btn {
+    background: #3b82f6;
+    color: white;
+    padding: 10px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    border: none;
+    transition: all 0.2s;
+  }
+  .btn:hover { background: #475569; transform: translateY(-1px); }
+  .btn-success { background: #94a3b8; }
+  .btn-success:hover { background: #cbd5e1; }
+  .btn-warning { background: #64748b; color: white; }
+  .btn-warning:hover { background: #475569; }
+  select, input[type="range"] {
+    background: #334155;
+    color: white;
+    border: 1px solid #475569;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    cursor: pointer;
+  }
+  .match-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-grow: 1;
+    max-width: 300px;
+  }
+  .progress-bar {
+    flex-grow: 1;
+    height: 16px;
+    background: #334155;
+    border-radius: 8px;
+    overflow: hidden;
+    position: relative;
+  }
+  .progress-fill {
+    height: 100%;
+    width: 0%;
+    background: #3b82f6;
+    transition: width 0.3s ease;
+  }
+  .match-text {
+    font-family: monospace;
+    font-weight: bold;
+    color: #94a3b8;
+    min-width: 55px;
+  }
+  .workspace {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 20px;
+  }
+  .card {
+    background: #0f172a;
+    padding: 16px;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    border: 1px solid #334155;
+  }
+  .card h3 { margin: 0 0 12px 0; font-size: 1rem; color: #cbd5e1; }
+  canvas {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    background: #020617;
+    image-rendering: pixelated;
+  }
+  .controls-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    background: #0f172a;
+    padding: 16px;
+    border-radius: 12px;
+    justify-content: center;
+  }
+  .value-badge {
+    background: #1e293b;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-family: monospace;
+    color: #94a3b8;
+    font-weight: bold;
+  }
+  .history-log {
+    background: #0f172a;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-family: monospace;
+    font-size: 0.85rem;
+    color: #94a3b8;
+    max-height: 100px;
+    overflow-y: auto;
+  }
+  .win-overlay {
+    display: none;
+    background: #334155;
+    border: 2px solid #475569;
+    padding: 16px;
+    border-radius: 12px;
+    text-align: center;
+    color: #cbd5e1;
+    font-weight: bold;
+    font-size: 1.2rem;
+  }
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.01); }
+  }
+</style>
+
+<h1 class="text-3xl font-bold mb-4 text-zinc-100">Pixel Sequence Unscrambler</h1>
+<p class="text-zinc-400 text-center max-w-2xl mb-8">The image was scrambled by applying a hidden sequence of pixel transformations. Experiment with operations to restore the image back to 100% match</p>
+
+<div class="game-panel">
+  <div class="top-bar">
+    <div>
+      <label class="text-zinc-100" for="difficulty">Difficulty:</label>
+      <select id="difficulty" class="mr-2">
+        <option value="2">Easy (2 Scramble Steps)</option>
+        <option value="3" selected>Medium (3 Scramble Steps)</option>
+        <option value="4">Hard (4 Scramble Steps)</option>
+      </select>
+      <button class="btn btn-success" id="newPuzzleBtn">New Puzzle</button>
+    </div>
+
+    <div class="match-container">
+      <span class="text-zinc-300">Match:</span>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+      <span class="match-text" id="matchText">0%</span>
+    </div>
+
+    <div>
+      <button class="btn btn-warning" id="hintBtn" style="margin-right: 8px;">Hint</button>
+      <label class="btn" for="fileInput">Load Image</label>
+      <input type="file" id="fileInput" accept="image/*" style="display:none;">
+    </div>
+  </div>
+
+  <div class="win-overlay" id="winBanner">
+   PUZZLE SOLVED You decoded the exact pixel sequence
+  </div>
+
+  <div class="workspace">
+    <div class="card">
+      <h3>Target Goal (Reference)</h3>
+      <canvas id="targetCanvas" width={canvasSize.width} height={canvasSize.height}></canvas>
+    </div>
+
+    <div class="card">
+      <h3>Current Player Canvas</h3>
+      <canvas id="playerCanvas" width={canvasSize.width} height={canvasSize.height}></canvas>
+    </div>
+  </div>
+
+  <div class="controls-row">
+    <label class="text-zinc-100">Direction:</label>
+    <select id="userMode">
+      <option value="horizontal">Horizontal</option>
+      <option value="vertical">Vertical</option>
+    </select>
+
+    <label class="text-zinc-100">Pattern:</label>
+    <select id="userPattern">
+      <option value="reverse">Invert Block [A,B,C → C,B,A]</option>
+    </select>
+
+    <label class="text-zinc-100">Distance:</label>
+    <input type="range" id="userDist" min="2" max="50" value="12">
+    <span class="value-badge" id="userDistVal">12 px</span>
+
+    <button class="btn" id="applyMoveBtn">Apply Move</button>
+    <button class="btn" id="resetBtn" style="background:#64748b;">Reset to Start</button>
+  </div>
+
+  <div class="history-log" id="historyLog">
+    > Puzzle initialized. Scramble sequence hidden
+  </div>
+</div>
+
+<script>
+  const targetCanvas = document.getElementById('targetCanvas');
+  const playerCanvas = document.getElementById('playerCanvas');
+  const targetCtx = targetCanvas.getContext('2d');
+  const playerCtx = playerCanvas.getContext('2d');
+
+  const difficultySel = document.getElementById('difficulty');
+  const newPuzzleBtn = document.getElementById('newPuzzleBtn');
+  const hintBtn = document.getElementById('hintBtn');
+  const fileInput = document.getElementById('fileInput');
+  const userMode = document.getElementById('userMode');
+  const userPattern = document.getElementById('userPattern');
+  const userDist = document.getElementById('userDist');
+  const userDistVal = document.getElementById('userDistVal');
+  const applyMoveBtn = document.getElementById('applyMoveBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  
+  const progressFill = document.getElementById('progressFill');
+  const matchText = document.getElementById('matchText');
+  const historyLog = document.getElementById('historyLog');
+  const winBanner = document.getElementById('winBanner');
+
+  let baseImage = null;
+  let hiddenSequence = [];
+  let playerMoveStack = [];
+  let initialScrambledData = null;
+
+  userDist.addEventListener('input', (e) => userDistVal.textContent = e.target.value + ' px');
+
+  function createDefaultImage() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 400;
+    canvas.height = 300;
+    const ctx = canvas.getContext('2d');
+
+    const grad = ctx.createLinearGradient(0, 0, 400, 300);
+    grad.addColorStop(0, '#475569');
+    grad.addColorStop(0.5, '#64748b');
+    grad.addColorStop(1, '#94a3b8');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 400, 300);
+
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillRect(50, 50, 100, 100);
+    ctx.fillStyle = '#64748b';
+    ctx.beginPath();
+    ctx.arc(280, 100, 50, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#334155';
+    ctx.font = 'bold 36px sans-serif';
+    ctx.fillText('PIXEL CIPHER', 80, 220);
+
+    return canvas;
+  }
+
+  function initGame() {
+    baseImage = createDefaultImage();
+    startNewGame();
+  }
+
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        baseImage = img;
+        startNewGame();
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  newPuzzleBtn.addEventListener('click', startNewGame);
+
+  function startNewGame() {
+    winBanner.style.display = 'none';
+    playerMoveStack = [];
+    historyLog.innerHTML = '> Generating new scrambled puzzle...';
+
+    const w = baseImage?.naturalWidth || baseImage?.width || 400;
+    const h = baseImage?.naturalHeight || baseImage?.height || 300;
+
+    targetCanvas.width = playerCanvas.width = w;
+    targetCanvas.height = playerCanvas.height = h;
+
+    targetCtx.drawImage(baseImage, 0, 0);
+
+    const stepsCount = parseInt(difficultySel.value, 10);
+    hiddenSequence = [];
+    
+    const commonDistances = [6, 8, 12, 16, 20, 25, 30, 40, 50];
+    const modes = ['horizontal', 'vertical'];
+    const patterns = ['reverse'];
+
+    for (let i = 0; i < stepsCount; i++) {
+      const dist = commonDistances[Math.floor(Math.random() * commonDistances.length)];
+      const mode = modes[Math.floor(Math.random() * modes.length)];
+      const pattern = patterns[Math.floor(Math.random() * patterns.length)];
+      hiddenSequence.push({ mode, pattern, dist });
+    }
+
+    playerCtx.drawImage(baseImage, 0, 0);
+    const imgData = playerCtx.getImageData(0, 0, w, h);
+    
+    hiddenSequence.forEach(op => {
+      applyTransform(imgData.data, w, h, op.mode, op.pattern, op.dist);
+    });
+
+    playerCtx.putImageData(imgData, 0, 0);
+    initialScrambledData = playerCtx.getImageData(0, 0, w, h);
+
+    log(`> Scrambled with ${stepsCount} hidden operations`);
+    updateMatchScore();
+  }
+
+  applyMoveBtn.addEventListener('click', () => {
+    const mode = userMode.value;
+    const pattern = userPattern.value;
+    const dist = parseInt(userDist.value, 10);
+
+    const w = playerCanvas.width;
+    const h = playerCanvas.height;
+
+    const imgData = playerCtx.getImageData(0, 0, w, h);
+    applyTransform(imgData.data, w, h, mode, pattern, dist);
+    playerCtx.putImageData(imgData, 0, 0);
+
+    playerMoveStack.push({ mode, pattern, dist });
+    log(`> Applied: ${mode} ${pattern} (${dist}px)`);
+    updateMatchScore();
+  });
+
+  resetBtn.addEventListener('click', () => {
+    if (!initialScrambledData) return;
+    playerCtx.putImageData(initialScrambledData, 0, 0);
+    playerMoveStack = [];
+    winBanner.style.display = 'none';
+    log('> Reset back to initial scrambled state.');
+    updateMatchScore();
+  });
+
+  hintBtn.addEventListener('click', () => {
+    if (!hiddenSequence.length) return;
+
+    const stepToUndo = hiddenSequence[hiddenSequence.length - 1 - playerMoveStack.length];
+
+    if (!stepToUndo) {
+      log('[HINT] You have applied enough operations try resetting if the match is not 100%.');
+      return;
+    }
+
+    log(`[HINT] Try applying: [${stepToUndo.mode.toUpperCase()} ${stepToUndo.pattern} with K=${stepToUndo.dist}px]`);
+  });
+
+  function updateMatchScore() {
+    const w = targetCanvas.width;
+    const h = targetCanvas.height;
+
+    const targetData = targetCtx.getImageData(0, 0, w, h).data;
+    const currentData = playerCtx.getImageData(0, 0, w, h).data;
+
+    let matchingPixels = 0;
+    const totalPixels = w * h;
+
+    for (let i = 0; i < targetData.length; i += 4) {
+      if (
+        Math.abs(targetData[i] - currentData[i]) < 2 &&
+        Math.abs(targetData[i+1] - currentData[i+1]) < 2 &&
+        Math.abs(targetData[i+2] - currentData[i+2]) < 2
+      ) {
+        matchingPixels++;
+      }
+    }
+
+    const matchPct = Math.floor((matchingPixels / totalPixels) * 100);
+    progressFill.style.width = matchPct + '%';
+    matchText.textContent = matchPct + '%';
+
+    if (matchPct === 100) {
+      showWinBanner = true;
+      winBanner.style.display = 'block';
+      log('[SUCCESS] Image completely restored');
+    }
+  }
+
+  function log(msg) {
+    historyLog.innerHTML += `<br>${msg}`;
+    historyLog.scrollTop = historyLog.scrollHeight;
+  }
+
+  function applyTransform(data, w, h, mode, pattern, k) {
+    if (mode === 'horizontal') {
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x <= w - k; x += k) {
+          applyPatternToLine(data, y * w + x, 1, k, pattern);
+        }
+      }
+    } else if (mode === 'vertical') {
+      for (let x = 0; x < w; x++) {
+        for (let y = 0; y <= h - k; y += k) {
+          applyPatternToLine(data, y * w + x, w, k, pattern);
+        }
+      }
+    }
+  }
+
+  function applyPatternToLine(data, startPixelIdx, stride, k, pattern) {
+    if (pattern === 'reverse') {
+      for (let i = 0; i < Math.floor(k / 2); i++) {
+        let pA = (startPixelIdx + i * stride) * 4;
+        let pB = (startPixelIdx + (k - 1 - i) * stride) * 4;
+        swapPixels(data, pA, pB);
+      }
+    }
+  }
+
+  function swapPixels(arr, idxA, idxB) {
+    for (let c = 0; c < 4; c++) {
+      let temp = arr[idxA + c];
+      arr[idxA + c] = arr[idxB + c];
+      arr[idxB + c] = temp;
+    }
+  }
+
+  initGame();
+</script>

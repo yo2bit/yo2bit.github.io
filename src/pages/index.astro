@@ -3,41 +3,38 @@ import Layout from '../layouts/Layout.astro';
 ---
 
 <Layout>
-  <div class="flex flex-col items-center justify-center min-h-screen bg-black text-white font-sans">
+  <main class="flex flex-col items-center justify-center min-h-screen bg-black text-zinc-100 font-sans p-6">
     <img 
       src="/avatar.png" 
       alt="yo2bit avatar" 
       width="150" 
       height="150" 
-      class="rounded-full object-cover" 
-      loading="lazy" 
+      class="w-36 h-36 rounded-full object-cover border-2 border-zinc-800 shadow-xl" 
+      loading="eager" 
     />
 
-    <h1 class="text-6xl font-bold my-8">yo2bit</h1>
+    <h1 class="text-5xl sm:text-6xl font-extrabold tracking-tight my-8 text-center">
+      yo2bit
+    </h1>
 
-    <div class="flex gap-8">
-      <a 
-        href="https://github.com/yo2bit" 
-        target="_blank" 
-        rel="noopener noreferrer" 
-        class="text-white text-lg no-underline hover:text-zinc-400 transition"
-      >
-        GitHub
-      </a>
-      <a 
-        href="https://x.com/yo2bit" 
-        target="_blank" 
-        rel="noopener noreferrer" 
-        class="text-white text-lg no-underline hover:text-zinc-400 transition"
-      >
-        X
-      </a>
-      <a 
-        href="/blog" 
-        class="text-white text-lg no-underline hover:text-zinc-400 transition"
-      >
-        Blog
-      </a>
-    </div>
+<div class="flex flex-col gap-6 w-full max-w-sm">
+  <div class="flex flex-col gap-3">
+    <a href="/blog" class="flex items-center justify-center py-3 px-4 rounded-2xl bg-zinc-900 text-white font-medium hover:bg-zinc-800 border border-zinc-800 transition active:scale-95">
+      Blog
+    </a>
+    <a href="/image-game" class="flex items-center justify-center py-3 px-4 rounded-2xl bg-zinc-900 text-white font-medium hover:bg-zinc-800 border border-zinc-800 transition active:scale-95">
+      Image Game
+    </a>
   </div>
+
+  <div class="flex justify-center gap-6 pt-2 border-t border-zinc-800/80">
+    <a href="https://github.com/yo2bit" target="_blank" rel="noopener noreferrer" class="text-zinc-400 hover:text-white transition">
+      GitHub ↗
+    </a>
+    <a href="https://x.com/yo2bit" target="_blank" rel="noopener noreferrer" class="text-zinc-400 hover:text-white transition">
+      X ↗
+    </a>
+  </div>
+</div>
+  </main>
 </Layout>
